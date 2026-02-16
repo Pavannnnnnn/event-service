@@ -55,36 +55,14 @@ public class EventServiceImpl implements EventService {
 	@Override
 	public void joinEventByEmail(String email, int eventId) {
 
-		// 🔹 Get userId from Authorization service
 		String url = "http://event-authorization-service.railway.internal:8080/api/users/email/" + email;
-
 		Integer userId = restTemplate.getForObject(url, Integer.class);
-
-		if (userId == null) {
-			throw new RuntimeException("User not found");
-		}
-
 		boolean alreadyJoined = myEventsRepository.existsByUserIdAndEventId(userId, eventId);
-
 		if (alreadyJoined) {
 			throw new RuntimeException("User already joined this event");
 		}
-
-		// 🔹 Save booking FIRST
 		MyEvents myEvent = new MyEvents(eventId, userId);
 		myEventsRepository.save(myEvent);
-
-		// 🔹 Fetch event details
-		Event event = repository.findById(eventId).orElseThrow(() -> new RuntimeException("Event not found"));
-
-		// 🔹 Send email but DO NOT break flow
-		try {
-			emailService.sendTicketEmail(email, event.getEventName(), event.getEventDate().toString(),
-					event.getEventAddress());
-		} catch (Exception e) {
-			// Just log it
-			System.out.println("⚠ Email failed but booking completed: " + e.getMessage());
-		}
 	}
 
 	@Override
