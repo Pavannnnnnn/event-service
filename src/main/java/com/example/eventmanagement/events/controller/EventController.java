@@ -23,7 +23,10 @@ import com.example.eventmanagement.events.vo.MyEventRequestVO;
 
 @RestController
 @RequestMapping("/api/events")
-@CrossOrigin(origins = "http://localhost:3000")
+@CrossOrigin(origins = {
+	    "http://localhost:3000",
+	    "https://event-frontend-dun.vercel.app"
+	})
 public class EventController {
 
 	private final EventService eventService;
