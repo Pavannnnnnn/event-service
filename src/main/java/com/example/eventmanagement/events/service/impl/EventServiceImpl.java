@@ -55,38 +55,35 @@ public class EventServiceImpl implements EventService {
 	@Override
 	public void joinEventByEmail(String email, int eventId) {
 
+		// 🔹 Get userId from Authorization service
+		String url = "http://event-authorization-service.railway.internal:8080/api/users/email/" + email;
+
+		Integer userId = restTemplate.getForObject(url, Integer.class);
+
+		if (userId == null) {
+			throw new RuntimeException("User not found");
+		}
+
+		boolean alreadyJoined = myEventsRepository.existsByUserIdAndEventId(userId, eventId);
+
+		if (alreadyJoined) {
+			throw new RuntimeException("User already joined this event");
+		}
+
+		// 🔹 Save booking FIRST
+		MyEvents myEvent = new MyEvents(eventId, userId);
+		myEventsRepository.save(myEvent);
+
+		// 🔹 Fetch event details
+		Event event = repository.findById(eventId).orElseThrow(() -> new RuntimeException("Event not found"));
+
+		// 🔹 Send email but DO NOT break flow
 		try {
-			// 🔥 Internal Railway call to Authorization service
-			String url = "http://event-authorization-service.railway.internal:8080/api/users/email/" + email;
-
-			Integer userId = restTemplate.getForObject(url, Integer.class);
-
-			if (userId == null) {
-				throw new RuntimeException("User not found");
-			}
-
-			boolean alreadyJoined = myEventsRepository.existsByUserIdAndEventId(userId, eventId);
-
-			if (alreadyJoined) {
-				throw new RuntimeException("User already joined this event");
-			}
-
-			MyEvents myEvent = new MyEvents(eventId, userId);
-			myEventsRepository.save(myEvent);
-
-			// Fetch event details
-			Event event = repository.findById(eventId).orElseThrow(() -> new RuntimeException("Event not found"));
-
-			// 🔥 Email should NOT break booking flow
-			try {
-				emailService.sendTicketEmail(email, event.getEventName(), event.getEventDate().toString(),
-						event.getEventAddress());
-			} catch (Exception mailEx) {
-				System.out.println("Email failed but booking saved.");
-			}
-
-		} catch (Exception ex) {
-			throw new RuntimeException("Join failed: " + ex.getMessage());
+			emailService.sendTicketEmail(email, event.getEventName(), event.getEventDate().toString(),
+					event.getEventAddress());
+		} catch (Exception e) {
+			// Just log it
+			System.out.println("⚠ Email failed but booking completed: " + e.getMessage());
 		}
 	}
 
