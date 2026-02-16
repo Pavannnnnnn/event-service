@@ -61,7 +61,7 @@ public class EventServiceImpl implements EventService {
 	@Override
 	public void joinEventByEmail(String email, int eventId) {
 
-	    String url = "http://localhost:8081/api/users/email/" + email;
+		String url = "http://event-authorization-service.railway.internal:8080/api/users/email/" + email;
 	    Integer userId = restTemplate.getForObject(url, Integer.class);
 
 	    boolean alreadyJoined =
@@ -185,7 +185,8 @@ public class EventServiceImpl implements EventService {
 	@Override
 	public List<EventVO> getJoinedEventsByEmail(String email) {
 
-		String url = "http://localhost:8081/api/users/email/" + email;
+		String url = "http://event-authorization-service.railway.internal:8080/api/users/email/" + email;
+
 		Integer userId = restTemplate.getForObject(url, Integer.class);
 
 		List<MyEvents> mappings = myEventsRepository.findByUserId(userId);
