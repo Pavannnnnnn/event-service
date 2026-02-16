@@ -19,7 +19,6 @@ import com.example.eventmanagement.events.service.SupabaseStorageService;
 import com.example.eventmanagement.events.vo.EventVO;
 import com.example.eventmanagement.events.service.EmailService;
 
-
 @Service
 public class EventServiceImpl implements EventService {
 
@@ -32,20 +31,15 @@ public class EventServiceImpl implements EventService {
 	private final SupabaseStorageService storageService;
 	private final EmailService emailService;
 
-	public EventServiceImpl(
-	        EventRepository repository,
-	        EventConverter converter,
-	        MyEventsRepository myEventsRepository,
-	        RestTemplate restTemplate,
-	        SupabaseStorageService storageService,
-	        EmailService emailService) {
+	public EventServiceImpl(EventRepository repository, EventConverter converter, MyEventsRepository myEventsRepository,
+			RestTemplate restTemplate, SupabaseStorageService storageService, EmailService emailService) {
 
-	    this.repository = repository;
-	    this.converter = converter;
-	    this.myEventsRepository = myEventsRepository;
-	    this.restTemplate = restTemplate;
-	    this.storageService = storageService;
-	    this.emailService = emailService;  // 🔥 ADD THIS
+		this.repository = repository;
+		this.converter = converter;
+		this.myEventsRepository = myEventsRepository;
+		this.restTemplate = restTemplate;
+		this.storageService = storageService;
+		this.emailService = emailService; // 🔥 ADD THIS
 	}
 
 	@Override
@@ -61,32 +55,40 @@ public class EventServiceImpl implements EventService {
 	@Override
 	public void joinEventByEmail(String email, int eventId) {
 
-		String url = "http://event-authorization-service.railway.internal:8080/api/users/email/" + email;
-	    Integer userId = restTemplate.getForObject(url, Integer.class);
+		try {
+			// 🔥 Internal Railway call to Authorization service
+			String url = "http://event-authorization-service.railway.internal:8080/api/users/email/" + email;
 
-	    boolean alreadyJoined =
-	            myEventsRepository.existsByUserIdAndEventId(userId, eventId);
+			Integer userId = restTemplate.getForObject(url, Integer.class);
 
-	    if (alreadyJoined) {
-	        throw new RuntimeException("User already joined this event");
-	    }
+			if (userId == null) {
+				throw new RuntimeException("User not found");
+			}
 
-	    MyEvents myEvent = new MyEvents(eventId, userId);
-	    myEventsRepository.save(myEvent);
+			boolean alreadyJoined = myEventsRepository.existsByUserIdAndEventId(userId, eventId);
 
-	    // 🔥 Fetch event details
-	    Event event = repository.findById(eventId)
-	            .orElseThrow(() -> new RuntimeException("Event not found"));
+			if (alreadyJoined) {
+				throw new RuntimeException("User already joined this event");
+			}
 
-	    // 🔥 Send ticket email
-	    emailService.sendTicketEmail(
-	            email,
-	            event.getEventName(),
-	            event.getEventDate().toString(),
-	            event.getEventAddress()
-	    );
+			MyEvents myEvent = new MyEvents(eventId, userId);
+			myEventsRepository.save(myEvent);
+
+			// Fetch event details
+			Event event = repository.findById(eventId).orElseThrow(() -> new RuntimeException("Event not found"));
+
+			// 🔥 Email should NOT break booking flow
+			try {
+				emailService.sendTicketEmail(email, event.getEventName(), event.getEventDate().toString(),
+						event.getEventAddress());
+			} catch (Exception mailEx) {
+				System.out.println("Email failed but booking saved.");
+			}
+
+		} catch (Exception ex) {
+			throw new RuntimeException("Join failed: " + ex.getMessage());
+		}
 	}
-
 
 	@Override
 	public void addEvent(String name, String desc, String address, String date, String email, MultipartFile image)
@@ -131,56 +133,43 @@ public class EventServiceImpl implements EventService {
 	@Override
 	public void deleteEvent(int id) {
 
-	    Event event = repository.findById(id)
-	            .orElseThrow(() -> new RuntimeException("Event not found"));
+		Event event = repository.findById(id).orElseThrow(() -> new RuntimeException("Event not found"));
 
-	    // 🔥 Delete image from Supabase
-	    if (event.getEventImage() != null) {
-	        storageService.deleteImage(event.getEventImage());
-	    }
+		// 🔥 Delete image from Supabase
+		if (event.getEventImage() != null) {
+			storageService.deleteImage(event.getEventImage());
+		}
 
-	    repository.deleteById(id);
+		repository.deleteById(id);
 	}
-
 
 	@Override
-	public void updateEvent(int id,
-	                        String name,
-	                        String desc,
-	                        String address,
-	                        String date,
-	                        MultipartFile image) throws Exception {
+	public void updateEvent(int id, String name, String desc, String address, String date, MultipartFile image)
+			throws Exception {
 
-	    Event event = repository.findById(id)
-	            .orElseThrow(() -> new RuntimeException("Event not found"));
+		Event event = repository.findById(id).orElseThrow(() -> new RuntimeException("Event not found"));
 
-	    event.setEventName(name);
-	    event.setEventDescription(desc);
-	    event.setEventAddress(address);
-	    event.setEventDate(LocalDateTime.parse(date));
+		event.setEventName(name);
+		event.setEventDescription(desc);
+		event.setEventAddress(address);
+		event.setEventDate(LocalDateTime.parse(date));
 
-	    if (image != null && !image.isEmpty()) {
+		if (image != null && !image.isEmpty()) {
 
-	        // 🔥 Delete old image from Supabase
-	        if (event.getEventImage() != null) {
-	            storageService.deleteImage(event.getEventImage());
-	        }
+			// 🔥 Delete old image from Supabase
+			if (event.getEventImage() != null) {
+				storageService.deleteImage(event.getEventImage());
+			}
 
-	        String fileName = System.currentTimeMillis() + "_" +
-	                image.getOriginalFilename()
-	                        .replaceAll("\\s+", "_");
+			String fileName = System.currentTimeMillis() + "_" + image.getOriginalFilename().replaceAll("\\s+", "_");
 
-	        String imageUrl = storageService.uploadImage(
-	                fileName,
-	                image.getBytes()
-	        );
+			String imageUrl = storageService.uploadImage(fileName, image.getBytes());
 
-	        event.setEventImage(imageUrl);
-	    }
+			event.setEventImage(imageUrl);
+		}
 
-	    repository.save(event);
+		repository.save(event);
 	}
-
 
 	@Override
 	public List<EventVO> getJoinedEventsByEmail(String email) {
@@ -201,7 +190,5 @@ public class EventServiceImpl implements EventService {
 
 		return events.stream().map(converter::toVO).toList();
 	}
-	
-
 
 }
